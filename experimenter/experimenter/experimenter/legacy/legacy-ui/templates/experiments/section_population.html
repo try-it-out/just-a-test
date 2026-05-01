@@ -1,0 +1,41 @@
+{% extends "experiments/section_base.html" %}
+
+{% block section_title %}
+Population
+{% endblock %}
+
+{% block section_content %}
+  <h5>{{ experiment.population }}</h5>
+
+  <strong>Locales</strong>
+  <p>
+    {% for locale in experiment.locales.all %}
+      {{ locale }}{% if not forloop.last %}, {% endif %}
+    {% empty %}
+      All
+    {% endfor %}
+  </p>
+
+  <strong>Countries</strong>
+  <p>
+    {% for country in experiment.countries.all %}
+      {{ country }}{% if not forloop.last %}, {% endif %}
+    {% empty %}
+      All
+    {% endfor %}
+  </p>
+
+  <strong>Platforms</strong>
+  <p>
+    {{ experiment.display_platforms_or_versions }}
+  </p>
+
+  <strong>Profile Filtering</strong>
+  <p>
+    {{ experiment.profile_age }}
+  </p>
+
+  <strong>Additional Filtering</strong>
+  {{ experiment.client_matching|urlize|linebreaks }}
+
+{% endblock %}

@@ -1,0 +1,1013 @@
+version: 2.1
+orbs:
+  gh: circleci/github-cli@2.2
+  gcp-cli: circleci/gcp-cli@3.3.1
+  android: circleci/android@2.5.0
+  macos: circleci/macos@2.5.2
+commands:
+  check_file_paths:
+    description: "Check file paths"
+    parameters:
+      paths:
+        type: string
+        default: ""
+    steps:
+      - run:
+          name: Check file paths
+          command: |
+            # Check if CIRCLE_BRANCH is "main" and skip the check
+            if [ "$CIRCLE_BRANCH" == "main" ]; then
+                echo "On main branch. Skipping path checks."
+                exit 0
+            fi
+
+            diff_output=$(git diff --name-only main HEAD)
+            echo "Changed files:"
+            echo "$diff_output"
+
+            if echo "$diff_output" | grep -E '<< parameters.paths >>|^[^/]+$|^.circleci/|experimenter/tests/integration/'
+              then
+                echo "Changes detected in << parameters.paths >> or .circleci or root directory. Running tests and linting."
+              else
+                echo "No changes in << parameters.paths >> or .circleci or root directory. Skipping tests and linting."
+                circleci-agent step halt
+            fi
+
+  docker_login:
+    description: "Login to Docker"
+    parameters:
+      username:
+        type: string
+      password:
+        type: string
+    steps:
+      - run: |
+          echo "<< parameters.password >>" | docker login --username << parameters.username >> --password-stdin
+
+  create_test_result_workspace:
+    steps:
+      - run:
+          name: Create Workspace
+          command: |
+            mkdir -p workspace/test-results
+            mkdir -p dashboard/test-results
+
+  upload-to-gcs:
+    parameters:
+      source:
+        type: string
+      destination:
+        type: string
+      extension:
+        type: enum
+        enum: ["xml", "json"]
+    steps:
+      - run:
+          name: Change gcloud folder permissions
+          command: sudo chown -R $USER /home/circleci/.config/gcloud/ || true
+      - gcp-cli/setup:
+          gcloud_service_key: ETE_GCLOUD_SERVICE_KEY
+          google_project_id: ETE_GOOGLE_PROJECT_ID
+      - run:
+          name: Upload << parameters.source >> << parameters.extension >> Files to GCS
+          when: always  # Ensure the step runs even if previous steps, like test runs, fail
+          command: |
+            allowed_branches=("update_firefox_versions" "update-application-services")
+
+            for branch in "${allowed_branches[@]}"; do
+              if [[ "$CIRCLE_BRANCH" == "$branch" || "$CIRCLE_BRANCH" == gh-readonly-queue/$branch/* ]]; then
+                should_upload=true
+                break
+              fi
+            done
+
+            if [[ "$should_upload" == true ]]; then
+              FILES=$(ls -1 << parameters.source >>/*.<< parameters.extension >> 2>/dev/null)
+              if [ -z "$FILES" ]; then
+                echo "No << parameters.extension >> files found in << parameters.source >>/"
+                exit 1
+              fi
+              gsutil cp -n $FILES << parameters.destination >>
+            else
+              echo "Skipping artifact upload; not on an allowed or merge queue branch."
+            fi
+
+jobs:
+  check_experimenter_x86_64:
+    machine:
+      image: ubuntu-2204:2024.11.1
+      docker_layer_caching: true
+    resource_class: xlarge
+    working_directory: ~/experimenter
+    steps:
+      - checkout
+      - check_file_paths:
+          paths: "experimenter/"
+      - run:
+          name: Run tests and linting
+          command: |
+            cp .env.sample .env
+            make check
+
+  check_experimenter_and_report:
+    machine:
+      image: ubuntu-2204:2024.11.1
+      docker_layer_caching: true
+    resource_class: large
+    working_directory: ~/experimenter
+    steps:
+      - checkout
+      - check_file_paths:
+          paths: "experimenter/"
+      - create_test_result_workspace
+      - run:
+          name: Run coverage
+          no_output_timeout: 20m
+          command: |
+            cp .env.sample .env
+            make check_and_report || true
+      - store_test_results:
+          path: workspace/test-results/experimenter_tests.xml
+      - store_test_results:
+          path: workspace/test-results/junit.xml
+      - upload-to-gcs:
+          source: dashboard/test-results
+          destination: gs://ecosystem-test-eng-metrics/experimenter/junit
+          extension: xml
+      - upload-to-gcs:
+          source: dashboard/test-results
+          destination: gs://ecosystem-test-eng-metrics/experimenter/coverage
+          extension: json
+
+  check_experimenter_aarch64:
+    machine:
+      image: ubuntu-2204:2024.11.1
+      docker_layer_caching: true
+    resource_class: arm.large
+    working_directory: ~/experimenter
+    steps:
+      - checkout
+      - check_file_paths:
+          paths: "experimenter/"
+      - run:
+          name: Run tests and linting
+          command: |
+            cp .env.sample .env
+            make check
+
+  check_cirrus_x86_64:
+    machine:
+      image: ubuntu-2204:2024.11.1
+      docker_layer_caching: true
+    resource_class: large
+    working_directory: ~/cirrus
+    steps:
+      - checkout
+      - check_file_paths:
+          paths: "cirrus/"
+      - create_test_result_workspace
+      - run:
+          name: Run Cirrus tests and linting
+          command: |
+            make cirrus_check_and_report
+      - store_test_results:
+          path: workspace/test-results/cirrus_pytest.xml
+      - upload-to-gcs:
+          source: dashboard/test-results
+          destination: gs://ecosystem-test-eng-metrics/experimenter/junit
+          extension: xml
+      - upload-to-gcs:
+          source: dashboard/test-results
+          destination: gs://ecosystem-test-eng-metrics/experimenter/coverage
+          extension: json
+
+  check_cirrus_aarch64:
+    machine:
+      image: ubuntu-2204:2024.11.1
+      docker_layer_caching: true
+    resource_class: arm.large
+    working_directory: ~/cirrus
+    steps:
+      - checkout
+      - check_file_paths:
+          paths: "cirrus/"
+      - create_test_result_workspace
+      - run:
+          name: Run Cirrus tests and linting
+          command: |
+            make cirrus_check_and_report
+      - store_test_results:
+          path: workspace/test-results/cirrus_pytest.xml
+      - upload-to-gcs:
+          source: dashboard/test-results
+          destination: gs://ecosystem-test-eng-metrics/experimenter/junit
+          extension: xml
+      - upload-to-gcs:
+          source: dashboard/test-results
+          destination: gs://ecosystem-test-eng-metrics/experimenter/coverage
+          extension: json
+
+  check_schemas:
+    machine:
+      image: ubuntu-2204:2024.11.1
+      docker_layer_caching: true
+    steps:
+      - checkout
+      - check_file_paths:
+          paths: "schemas/"
+      - run:
+          name: Run Schemas tests and linting
+          command: |
+            make schemas_check
+
+  integration_nimbus_desktop_ui:
+    machine:
+      image: ubuntu-2204:2024.11.1
+      docker_layer_caching: true
+    resource_class: xlarge
+    working_directory: ~/experimenter
+    environment:
+      FIREFOX_CHANNEL: release
+      PYTEST_ARGS: -m nimbus_ui -n 2 --reruns 1
+    steps:
+      - checkout
+      - check_file_paths:
+          paths: "experimenter/experimenter/"
+      - create_test_result_workspace
+      - run:
+          name: Run integration tests
+          command: |
+            cp .env.integration-tests .env
+            make refresh SKIP_DUMMY=1 PYTEST_SENTRY_DSN=$PYTEST_SENTRY_DSN CIRCLECI=$CIRCLECI up_prod_detached integration_test_nimbus_desktop PYTEST_ARGS="$PYTEST_ARGS" integration_test_and_report
+      - store_artifacts:
+          path: ~/experimenter/experimenter/tests/integration/test-reports/report.htm
+      - store_test_results:
+          path: workspace/test-results/experimenter_integration_tests.xml
+      - upload-to-gcs:
+          source: dashboard/test-results
+          destination: gs://ecosystem-test-eng-metrics/experimenter/junit
+          extension: xml
+
+  integration_nimbus_remote_settings_launch:
+    machine:
+      image: ubuntu-2204:2024.11.1
+      docker_layer_caching: true
+    resource_class: large
+    working_directory: ~/experimenter
+    environment:
+      FIREFOX_CHANNEL: release
+      PYTEST_ARGS: -m remote_settings_launch --reruns 1
+    steps:
+      - checkout
+      - check_file_paths:
+          paths: "experimenter/experimenter/"
+      - create_test_result_workspace
+      - run:
+          name: Run integration tests
+          command: |
+            cp .env.integration-tests .env
+            make refresh SKIP_DUMMY=1 PYTEST_SENTRY_DSN=$PYTEST_SENTRY_DSN CIRCLECI=$CIRCLECI up_prod_detached integration_test_nimbus_desktop PYTEST_ARGS="$PYTEST_ARGS" integration_test_and_report
+      - store_artifacts:
+          path: ~/experimenter/experimenter/tests/integration/test-reports/report.htm
+      - store_test_results:
+          path: workspace/test-results/experimenter_integration_tests.xml
+      - upload-to-gcs:
+          source: dashboard/test-results
+          destination: gs://ecosystem-test-eng-metrics/experimenter/junit
+          extension: xml
+
+  integration_nimbus_remote_settings_all:
+    machine:
+      image: ubuntu-2204:2024.11.1
+      docker_layer_caching: true
+    resource_class: medium
+    working_directory: ~/experimenter
+    environment:
+      FIREFOX_CHANNEL: release
+      PYTEST_ARGS: -k FIREFOX_DESKTOP -m remote_settings_all --reruns 1
+    steps:
+      - checkout
+      - check_file_paths:
+          paths: "experimenter/experimenter/"
+      - create_test_result_workspace
+      - run:
+          name: Run integration tests
+          command: |
+            cp .env.integration-tests .env
+            make refresh SKIP_DUMMY=1 PYTEST_SENTRY_DSN=$PYTEST_SENTRY_DSN CIRCLECI=$CIRCLECI up_prod_detached integration_test_nimbus_desktop PYTEST_ARGS="$PYTEST_ARGS" integration_test_and_report
+      - store_artifacts:
+          path: ~/experimenter/experimenter/tests/integration/test-reports/report.htm
+      - store_test_results:
+          path: workspace/test-results/experimenter_integration_tests.xml
+      - upload-to-gcs:
+          source: dashboard/test-results
+          destination: gs://ecosystem-test-eng-metrics/experimenter/junit
+          extension: xml
+
+  integration_nimbus_desktop_enrollment:
+    machine:
+      image: ubuntu-2204:2024.11.1
+      docker_layer_caching: true
+    resource_class: large
+    working_directory: ~/experimenter
+    environment:
+      FIREFOX_CHANNEL: nightly
+      PYTEST_ARGS: -k FIREFOX_DESKTOP -m desktop_enrollment --reruns 1
+    steps:
+      - checkout
+      - check_file_paths:
+          paths: "experimenter/experimenter/|experimenter/tests/firefox_desktop_release_build.env|experimenter/tests/firefox_desktop_beta_build.env"
+      - create_test_result_workspace
+      - run:
+          name: Run integration tests
+          command: |
+            cp .env.integration-tests .env
+            make refresh SKIP_DUMMY=1 PYTEST_SENTRY_DSN=$PYTEST_SENTRY_DSN CIRCLECI=$CIRCLECI up_prod_detached integration_test_nimbus_desktop PYTEST_ARGS="$PYTEST_ARGS" integration_test_and_report
+          no_output_timeout: 30m
+      - store_artifacts:
+          path: ~/experimenter/experimenter/tests/integration/test-reports/report.htm
+      - store_test_results:
+          path: workspace/test-results/experimenter_integration_tests.xml
+      - upload-to-gcs:
+          source: dashboard/test-results
+          destination: gs://ecosystem-test-eng-metrics/experimenter/junit
+          extension: xml
+
+  integration_nimbus_desktop_release_targeting:
+    machine:
+      image: ubuntu-2204:2024.11.1
+      docker_layer_caching: true
+    resource_class: large
+    working_directory: ~/experimenter
+    environment:
+      FIREFOX_CHANNEL: release
+      PYTEST_ARGS: -k FIREFOX_DESKTOP -m run_targeting -n 4 --reruns 1
+      MOZ_REMOTE_SETTINGS_DEVTOOLS: 1 # allows us to override and set the remote settings URL
+    steps:
+      - checkout
+      - check_file_paths:
+          paths: "experimenter/experimenter/targeting|experimenter/experimenter/experiments|experimenter/tests/firefox_desktop_release_build.env|experimenter/tests/firefox_desktop_beta_build.env"
+      - create_test_result_workspace
+      - run:
+          name: Run integration tests
+          command: |
+            cp .env.integration-tests .env
+            make refresh SKIP_DUMMY=1 PYTEST_SENTRY_DSN=$PYTEST_SENTRY_DSN CIRCLECI=$CIRCLECI up_prod_detached integration_test_nimbus_desktop PYTEST_ARGS="$PYTEST_ARGS" integration_test_and_report
+      - store_artifacts:
+          path: ~/experimenter/experimenter/tests/integration/test-reports/report.htm
+      - store_test_results:
+          path: workspace/test-results/experimenter_integration_tests.xml
+      - upload-to-gcs:
+          source: dashboard/test-results
+          destination: gs://ecosystem-test-eng-metrics/experimenter/junit
+          extension: xml
+
+  integration_nimbus_desktop_beta_targeting:
+    machine:
+      image: ubuntu-2204:2024.11.1
+      docker_layer_caching: true
+    resource_class: large
+    working_directory: ~/experimenter
+    environment:
+      FIREFOX_CHANNEL: beta
+      PYTEST_ARGS: -k FIREFOX_DESKTOP -m run_targeting -n 4 --reruns 1
+      MOZ_REMOTE_SETTINGS_DEVTOOLS: 1 # allows us to override and set the remote settings URL
+    steps:
+      - checkout
+      - check_file_paths:
+          paths: "experimenter/experimenter/targeting|experimenter/experimenter/experiments|experimenter/tests/firefox_desktop_release_build.env|experimenter/tests/firefox_desktop_beta_build.env"
+      - create_test_result_workspace
+      - run:
+          name: Run integration tests
+          command: |
+            cp .env.integration-tests .env
+            make refresh SKIP_DUMMY=1 PYTEST_SENTRY_DSN=$PYTEST_SENTRY_DSN CIRCLECI=$CIRCLECI up_prod_detached integration_test_nimbus_desktop PYTEST_ARGS="$PYTEST_ARGS" integration_test_and_report
+      - store_artifacts:
+          path: ~/experimenter/experimenter/tests/integration/test-reports/report.htm
+      - store_test_results:
+          path: workspace/test-results/experimenter_integration_tests.xml
+      - upload-to-gcs:
+          source: dashboard/test-results
+          destination: gs://ecosystem-test-eng-metrics/experimenter/junit
+          extension: xml
+
+  integration_nimbus_desktop_nightly_targeting:
+    machine:
+      image: ubuntu-2204:2024.11.1
+      docker_layer_caching: true
+    resource_class: large
+    working_directory: ~/experimenter
+    environment:
+      FIREFOX_CHANNEL: nightly
+      PYTEST_ARGS: -k FIREFOX_DESKTOP -m run_targeting -n 2 --reruns 1
+    steps:
+      - checkout
+      - check_file_paths:
+          paths: "experimenter/experimenter/targeting|experimenter/experimenter/experiments|experimenter/tests/firefox_desktop_release_build.env|experimenter/tests/firefox_desktop_beta_build.env"
+      - create_test_result_workspace
+      - run:
+          name: Run integration tests
+          command: |
+            cp .env.integration-tests .env
+            make refresh SKIP_DUMMY=1 PYTEST_SENTRY_DSN=$PYTEST_SENTRY_DSN CIRCLECI=$CIRCLECI up_prod_detached integration_test_nimbus_desktop PYTEST_ARGS="$PYTEST_ARGS" integration_test_and_report
+      - store_artifacts:
+          path: ~/experimenter/experimenter/tests/integration/test-reports/report.htm
+      - store_test_results:
+          path: workspace/test-results/experimenter_integration_tests.xml
+      - upload-to-gcs:
+          source: dashboard/test-results
+          destination: gs://ecosystem-test-eng-metrics/experimenter/junit
+          extension: xml
+
+  integration_nimbus_fenix_enrollment:
+    executor:
+      name: android/android-machine
+      resource-class: xlarge
+      tag: default
+    environment:
+      PYTEST_ARGS: --reruns 1
+    steps:
+      - checkout
+      - check_file_paths:
+          paths: "experimenter/experimenter/targeting|experimenter/experimenter/experiments|experimenter/tests/firefox_fenix_beta_build.env|experimenter/tests/firefox_fenix_release_build.env"
+      - create_test_result_workspace
+      - attach_workspace:
+          at: /tmp/experimenter
+      - android/accept-licenses
+      - android/create-avd:
+          avd-name: myavd
+          install: true
+          system-image: system-images;android-34;google_apis;x86_64
+      - android/start-emulator:
+          avd-name: myavd
+          post-emulator-launch-assemble-command: adb devices
+      - run:
+          name: Install APKs
+          command: |
+            adb install /tmp/experimenter/tests/integration/nimbus/android/app-fenix-debug-androidTest.apk
+            adb install /tmp/experimenter/tests/integration/nimbus/android/app-fenix-x86_64-debug.apk
+      - run:
+          name: Download test files and run
+          command: |
+            curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/mozilla/application-services/main/install-nimbus-cli.sh | bash
+            pip install poetry==1.8.4
+            make integration_test_nimbus_fenix PYTEST_ARGS="$PYTEST_ARGS"
+      - android/save-gradle-cache:
+          cache-prefix: v1a
+      - store_artifacts:
+          path: workspace/test-results/report.htm
+      - store_test_results:
+          path: workspace/test-results/experimenter_fenix_integration_tests.xml
+      - upload-to-gcs:
+          source: dashboard/test-results
+          destination: gs://ecosystem-test-eng-metrics/experimenter/junit
+          extension: xml
+
+  integration_nimbus_ios_enrollment:
+    macos:
+      xcode: 16.2
+    parameters:
+      file_path:
+        type: string
+      ios_version:
+        type: string
+      simulator_device:
+        type: string
+    environment:
+      SIMULATOR_DEVICE: << parameters.simulator_device >>
+      IOS_VERSION: << parameters.ios_version >>
+    steps:
+      - checkout
+      - check_file_paths:
+          paths: "experimenter/experimenter/targeting|experimenter/experimenter/experiments|<< parameters.file_path >>"
+      - create_test_result_workspace
+      - macos/preboot-simulator:
+          version: << parameters.ios_version >>
+          platform: "iOS"
+          device: << parameters.simulator_device >>
+      - attach_workspace:
+          at: /tmp/experimenter
+      - run:
+          name: Clone Firefox iOS Repo
+          command: git clone https://github.com/mozilla-mobile/firefox-ios.git
+      - run:
+          name: Install nimbus-cli
+          command: curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/mozilla/application-services/main/install-nimbus-cli.sh | bash
+      - run:
+          name: Install Cargo
+          command: |
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+            echo 'export PATH=$HOME/.cargo/bin:$PATH' >> "$BASH_ENV"
+      - run:
+          name: Setup and build Firefox app
+          command: |
+            source << parameters.file_path >>
+            cd firefox-ios
+            git checkout "$BRANCH"
+            sh ./bootstrap.sh
+            cd firefox-ios
+            xcodebuild build-for-testing -scheme Fennec -target Client -destination 'platform=iOS Simulator,name=<< parameters.simulator_device >>,OS=<< parameters.ios_version >>' COMPILER_INDEX_STORE_ENABLE=NO CODE_SIGN_IDENTITY= CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO ARCHS="arm64"
+      - run:
+          name: Run Tests
+          command: |
+            curl -sSL https://install.python-poetry.org | python3 - --version 2.1.1
+            echo 'export PATH=/Users/distiller/.local/bin:$PATH' >> "$BASH_ENV"
+            source $BASH_ENV
+            EPOCH=$(date +"%s")
+            cd firefox-ios/firefox-ios/firefox-ios-tests/Tests/ExperimentIntegrationTests
+            git cherry-pick dfd0b8a556f5990d0b5d9351df8acf571895e6dc -X theirs || true
+            export SIMULATOR_UDID=$(python get_specific_device_udid.py)
+            cp -f ~/project/experimenter/tests/integration/nimbus/ios/test_ios_integration.py ./
+            cp -f ~/project/experimenter/tests/integration/nimbus/ios/xcodebuild.py ./
+            poetry add pydantic==2.10.3
+            poetry install
+            poetry run pytest --junitxml=/Users/distiller/project/workspace/test-results/experimenter_ios_integration_tests.xml -k test_ios_integration.py --feature ios_enrollment
+            cp /Users/distiller/project/workspace/test-results/experimenter_ios_integration_tests.xml /Users/distiller/project/dashboard/test-results/${CIRCLE_BUILD_NUM}__$(date +"%s")__${CIRCLE_PROJECT_REPONAME}__build__integration__results.xml
+      - run:
+          name: Change python version for GCP CLI  # circleci/macos with xcode 16.2 has python 3.13 and gcp-cli doesn't support this yet.
+          command: |
+            pyenv install 3.12.5
+            pyenv global 3.12.5
+      - run:
+          name: Collect XCTest Results
+          command: |
+            zip -r results.zip /Users/distiller/Library/Developer/Xcode/DerivedData/**/Logs/Test/*.xcresult
+          when: always
+      - run:
+          name: Collect xcodebuild log
+          command: |
+            cp /private/var/folders/**/**/T/pytest-of-distiller/pytest-*/**/xcodebuild.log ./
+          when: always
+      - store_artifacts:
+          path: ~/project/firefox-ios/firefox-ios/firefox-ios-tests/Tests/ExperimentIntegrationTests/results/index.html
+      - store_artifacts:
+          path: ~/project/xcodebuild.log
+      - store_artifacts:
+          path: ~/project/results.zip
+      - store_test_results:
+          path: /Users/distiller/project/workspace/test-results/experimenter_ios_integration_tests.xml
+      - upload-to-gcs:
+          source: dashboard/test-results
+          destination: gs://ecosystem-test-eng-metrics/experimenter/junit
+          extension: xml
+
+  integration_nimbus_sdk_targeting:
+    machine:
+      image: ubuntu-2204:2024.11.1
+      docker_layer_caching: true
+    resource_class: medium
+    working_directory: ~/experimenter
+    steps:
+      - checkout
+      - check_file_paths:
+          paths: "experimenter/experimenter/targeting|experimenter/experimenter/experiments|application-services/"
+      - create_test_result_workspace
+      - run:
+          name: Run rust integration tests
+          command: |
+            cp .env.integration-tests .env
+            make refresh SKIP_DUMMY=1 PYTEST_SENTRY_DSN=$PYTEST_SENTRY_DSN CIRCLECI=$CIRCLECI up_prod_detached integration_test_nimbus_sdk integration_test_and_report
+      - store_artifacts:
+          path: ~/experimenter/experimenter/tests/integration/test-reports/report.htm
+      - store_test_results:
+          path: workspace/test-results/experimenter_integration_tests.xml
+      - upload-to-gcs:
+          source: dashboard/test-results
+          destination: gs://ecosystem-test-eng-metrics/experimenter/junit
+          extension: xml
+
+  integration_nimbus_cirrus:
+    machine:
+      image: ubuntu-2204:2024.11.1
+      docker_layer_caching: true
+    resource_class: xlarge
+    working_directory: ~/experimenter
+    environment:
+      FIREFOX_CHANNEL: release
+      PYTEST_ARGS: -k DEMO_APP -m cirrus_enrollment --reruns 1
+    steps:
+      - checkout
+      - check_file_paths:
+          paths: "experimenter/experimenter/experiments/|cirrus/|application-services/"
+      - create_test_result_workspace
+      - run:
+          name: Run integration tests
+          command: |
+            cp .env.integration-tests .env
+            export CIRRUS=1
+            make refresh SKIP_DUMMY=1 PYTEST_SENTRY_DSN=$PYTEST_SENTRY_DSN CIRCLECI=$CIRCLECI up_prod_detached integration_test_nimbus_desktop PYTEST_ARGS="$PYTEST_ARGS" integration_test_and_report
+      - store_artifacts:
+          path: ~/experimenter/experimenter/tests/integration/test-reports/report.htm
+      - store_test_results:
+          path: workspace/test-results/experimenter_integration_tests.xml
+      - upload-to-gcs:
+          source: dashboard/test-results
+          destination: gs://ecosystem-test-eng-metrics/experimenter/junit
+          extension: xml
+
+  create_mobile_recipes:
+    working_directory: ~/experimenter
+    machine:
+      image: ubuntu-2204:2024.11.1
+      docker_layer_caching: true
+    steps:
+      - checkout
+      - run:
+          name: Create experiment on experimenter
+          command: |
+            cp .env.integration-tests .env
+            export CIRRUS=1
+            make refresh SKP_DUMMY=1 PYTEST_SENTRY_DSN=$PYTEST_SENTRY_DSN CIRCLECI=$CIRCLECI up_prod_detached integration_test_nimbus_desktop PYTEST_ARGS="-k test_create_mobile_experiment_for_integration_test"
+      - store_artifacts:
+          path: experimenter/tests/integration/ios_recipe.json
+      - store_artifacts:
+          path: experimenter/tests/integration/fenix_recipe.json
+      - persist_to_workspace:
+          root: experimenter
+          paths:
+            - tests/integration/ios_recipe.json
+            - tests/integration/fenix_recipe.json
+
+  deploy_experimenter:
+    working_directory: ~/experimenter
+    machine:
+      image: ubuntu-2004:2023.10.1
+      docker_layer_caching: true
+    steps:
+      - checkout
+      - run:
+          name: Prepare environment variables for OIDC authentication
+          command: |
+            echo 'export GOOGLE_PROJECT_ID="moz-fx-experimenter-prod-6cd5"' >> "$BASH_ENV"
+            echo "export OIDC_WIP_ID=$GCPV2_WORKLOAD_IDENTITY_POOL_ID" >> "$BASH_ENV"
+            echo "export OIDC_WIP_PROVIDER_ID=$GCPV2_CIRCLECI_WORKLOAD_IDENTITY_PROVIDER" >> "$BASH_ENV"
+            echo "export GOOGLE_PROJECT_NUMBER=$GCPV2_WORKLOAD_IDENTITY_POOL_PROJECT_NUMBER" >> "$BASH_ENV"
+            echo "export OIDC_SERVICE_ACCOUNT_EMAIL=$GCP_SERVICE_ACCOUNT_EMAIL" >> "$BASH_ENV"
+      - gcp-cli/setup:
+          use_oidc: true
+      - run:
+          name: Deploy to Google Artifact Registry
+          command: |
+            ./scripts/store_git_info.sh
+            make build_prod
+            gcloud auth configure-docker us-docker.pkg.dev --quiet
+            DOCKER_IMAGE="us-docker.pkg.dev/moz-fx-experimenter-prod-6cd5/experimenter-prod/experimenter"
+            docker tag experimenter:deploy ${DOCKER_IMAGE}:latest
+            docker push "${DOCKER_IMAGE}:latest"
+            GIT_SHA=$(git rev-parse --short HEAD)
+            docker tag experimenter:deploy ${DOCKER_IMAGE}:sha-${GIT_SHA}
+            docker push ${DOCKER_IMAGE}:sha-${GIT_SHA}
+
+  deploy_cirrus:
+    working_directory: ~/cirrus
+    machine:
+      image: ubuntu-2004:2023.10.1
+      docker_layer_caching: true
+    steps:
+      - checkout
+      - docker_login:
+          username: $DOCKERHUB_CIRRUS_USER
+          password: $DOCKERHUB_CIRRUS_PASS
+      - run:
+          name: Deploy to latest
+          command: |
+            make cirrus_build
+            docker tag cirrus:deploy ${DOCKERHUB_CIRRUS_REPO}:latest
+            docker push ${DOCKERHUB_CIRRUS_REPO}:latest
+
+            GIT_SHA=$(git rev-parse --short HEAD)
+            docker tag cirrus:deploy ${DOCKERHUB_CIRRUS_REPO}:sha-${GIT_SHA}
+            docker push ${DOCKERHUB_CIRRUS_REPO}:sha-${GIT_SHA}
+
+  deploy_schemas:
+    machine:
+      image: ubuntu-2004:2023.10.1
+      docker_layer_caching: true
+    steps:
+      - checkout
+      - run:
+          name: Check for package version change in last commit before proceeding.
+          command: |
+            if git diff main HEAD~1 schemas/pyproject.toml | grep 'version'
+              then
+                echo "Found changes to package version dir, proceeding with deployment."
+              else
+                echo "No changes in package version. Skipping mozilla-nimbus-schemas deployment."
+                circleci-agent step halt
+            fi
+      - run:
+          name: Upload to PyPI
+          command: |
+            # Relies on the TWINE_USERNAME and TWINE_PASSWORD environment variables configured at:
+            #   https://app.circleci.com/settings/project/github/mozilla/experimenter/environment-variables
+            # For more on twine, see:
+            #   https://twine.readthedocs.io/en/latest/
+            make schemas_deploy_pypi SCHEMAS_ENV="-e TWINE_USERNAME=${TWINE_USERNAME} -e TWINE_PASSWORD=${TWINE_PASSWORD}"
+      - run:
+          name: NPM Authentication
+          command: echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > .npmrc
+      - run:
+          name: Upload to NPM
+          command: |
+            # Relies on the NPM_TOKEN environment variable configured at:
+            #   https://app.circleci.com/settings/project/github/mozilla/experimenter/environment-variables
+            make schemas_deploy_npm SCHEMAS_ENV="-e NPM_TOKEN=${NPM_TOKEN}"
+
+  update_external_configs:
+    working_directory: ~/experimenter
+    machine:
+      image: ubuntu-2204:2024.11.1
+      docker_layer_caching: true
+    steps:
+      - add_ssh_keys:
+          fingerprints:
+            - "32:8e:72:0b:9a:a1:1c:b8:7e:90:e1:53:a3:73:68:47" # for git pushes from circleci, since relies on ssh
+      - checkout
+      - gh/setup:
+          token: GH_EXTERNAL_CONFIG_TOKEN # for gh commands from circleci, since relies on user token, since por que no los dos?
+      - run:
+          name: Setup Git
+          command: |
+            git config --local user.name "dataops-ci-bot"
+            git config --local user.email "dataops+ci-bot@mozilla.com"
+            gh config set git_protocol https
+      - run:
+          name: Check for External Config Update
+          command: |
+            git checkout main
+            git pull origin main
+            cp .env.sample .env
+            touch ./experimenter/fetch-summary.txt
+            env GITHUB_BEARER_TOKEN="${GH_EXTERNAL_CONFIG_TOKEN}" make fetch_external_resources FETCH_ARGS="--summary fetch-summary.txt"
+            mv ./experimenter/fetch-summary.txt /tmp/pr-body.txt
+            echo -e "\nCircle CI Task: ${CIRCLE_BUILD_URL}" >> /tmp/pr-body.txt
+            if python3 ./experimenter/bin/should-pr.py
+              then
+                git checkout -B external-config
+                git add .
+                git commit -m 'chore(nimbus): Update External Configs'
+                if (($((git diff external-config origin/external-config || git diff HEAD~1) | wc -c) > 0))
+                  then
+                    git push origin external-config -f
+                    gh pr create -t "chore(nimbus): Update External Configs" -F /tmp/pr-body.txt --base main --head external-config --repo mozilla/experimenter || \
+                      gh pr edit external-config -F /tmp/pr-body.txt
+                  else
+                    echo "Changes already committed, skipping"
+                fi
+              else
+                echo "No config changes, skipping"
+            fi
+
+  update_application_services:
+    machine:
+      image: ubuntu-2204:2024.11.1
+      docker_layer_caching: true
+    steps:
+      - add_ssh_keys:
+          fingerprints:
+            - "32:8e:72:0b:9a:a1:1c:b8:7e:90:e1:53:a3:73:68:47" # for git pushes from circleci, since relies on ssh
+      - checkout
+      - gh/setup:
+          token: GH_TOKEN # for gh commands from circleci, since relies on user token, since por que no los dos?
+      - run:
+          name: Setup Git
+          command: |
+            git config --local user.name "dataops-ci-bot"
+            git config --local user.email "dataops+ci-bot@mozilla.com"
+            gh config set git_protocol https
+      - run:
+          name: Check for Application Services update
+          command: |
+            git checkout main
+            git pull origin main
+            make update_application_services
+            if (($(git status --porcelain | wc -c) > 0)); then
+              git checkout -B update-application-services
+              git add .
+              git commit -m "chore(nimbus): Update application-services"
+              if (($((git diff update-application-services origin/update-application-services || git diff HEAD~1) | wc -c) > 0)); then
+                git push origin update-application-services -f
+                gh pr create -t "chore(nimbus): Update application-services" -b "" --base main --head update-application-services --repo mozilla/experimenter || echo "PR already exists, skipping"
+              else
+                echo "Changes already committed, skipping"
+              fi
+            else
+              echo "No config changes, skipping"
+            fi
+
+  update_firefox_versions:
+    machine:
+      image: ubuntu-2204:2024.11.1
+      docker_layer_caching: true
+    working_directory: ~/experimenter
+    steps:
+      - add_ssh_keys:
+          fingerprints:
+            - "32:8e:72:0b:9a:a1:1c:b8:7e:90:e1:53:a3:73:68:47" # for git pushes from circleci, since relies on ssh
+      - checkout
+      - gh/setup:
+          token: GH_TOKEN # for gh commands from circleci, since relies on user token, since por que no los dos?
+      - run:
+          name: Setup Git
+          command: |
+            git config --local user.name "dataops-ci-bot"
+            git config --local user.email "dataops+ci-bot@mozilla.com"
+            gh config set git_protocol https
+      - run:
+          name: Check for external Update
+          command: |
+            ./scripts/external_integration_updater_script.sh
+
+  build_firefox_fenix:
+    working_directory: ~/experimenter
+    machine:
+      image: ubuntu-2204:2024.11.1
+      docker_layer_caching: true
+    resource_class: xlarge
+    steps:
+      - checkout
+      - check_file_paths:
+          paths: "experimenter/experimenter/targeting|experimenter/experimenter/experiments|experimenter/tests/firefox_fenix_beta_build.env|experimenter/tests/firefox_fenix_release_build.env"
+      - run:
+          name: Build and upload images
+          command: |
+            cd experimenter/tests/integration/nimbus/android
+            docker build -t fenix-builder -f moz-central.test-container.Dockerfile .
+            docker run -d --name fenix-builder fenix-builder
+            docker cp fenix-builder:mozilla-central/mobile/android/fenix/app-fenix-debug-androidTest.apk ./
+            docker cp fenix-builder:mozilla-central/mobile/android/fenix/app-fenix-x86_64-debug.apk ./
+          no_output_timeout: 60m
+      - persist_to_workspace:
+          root: experimenter
+          paths:
+            - tests/integration/nimbus/android/app-fenix-debug-androidTest.apk
+            - tests/integration/nimbus/android/app-fenix-x86_64-debug.apk
+
+workflows:
+  update_configs:
+    triggers:
+      - schedule:
+          cron: "0 * * * *"
+          filters:
+            branches:
+              only:
+                - main
+    jobs:
+      - update_external_configs
+      - update_application_services
+
+  update_firefox:
+    triggers:
+      - schedule:
+          cron: "0 12 * * *"
+          filters:
+            branches:
+              only:
+                - main
+    jobs:
+      - update_firefox_versions
+
+  build:
+    jobs:
+      - check_experimenter_x86_64:
+          name: Check Experimenter x86_64
+      - check_experimenter_aarch64:
+          name: Check Experimenter aarch64
+      - check_experimenter_and_report:
+          name: Check Experimenter and report
+          filters:
+            branches:
+              only:
+                - main
+                - update_firefox_versions
+                - update-application-services
+      - check_cirrus_x86_64:
+          name: Check Cirrus x86_64
+      - check_cirrus_aarch64:
+          name: Check Cirrus aarch64
+      - check_schemas:
+          name: Check Schemas
+          filters:
+            branches:
+              ignore:
+                - main
+      - create_mobile_recipes:
+          name: Create Fenix and iOS recipes
+          filters:
+            branches:
+              only:
+                - update_firefox_versions
+      - integration_nimbus_desktop_ui:
+          name: Test Desktop Nimbus UI (Release Firefox)
+          filters:
+            branches:
+              ignore:
+                - main
+      - integration_nimbus_remote_settings_launch:
+          name: Test Remote Settings Launch (All Applications)
+          filters:
+            branches:
+              ignore:
+                - main
+      - integration_nimbus_remote_settings_all:
+          name: Test Remote Settings All Workflows (Release Firefox Desktop)
+          filters:
+            branches:
+              ignore:
+                - main
+      - integration_nimbus_desktop_release_targeting:
+          name: Test Desktop Targeting (Release Firefox)
+          filters:
+            branches:
+              ignore:
+                - main
+      - integration_nimbus_desktop_beta_targeting:
+          name: Test Desktop Targeting (Beta Firefox)
+          filters:
+            branches:
+              ignore:
+                - main
+      - integration_nimbus_desktop_nightly_targeting:
+          name: Test Desktop Targeting (Nightly Firefox)
+          filters:
+            branches:
+              ignore:
+                - main
+      - integration_nimbus_desktop_enrollment:
+          name: Test Desktop Enrollment (Release Firefox)
+          filters:
+            branches:
+              ignore:
+                - main
+      - build_firefox_fenix:
+          name: Build Fenix APKs
+          filters:
+            branches:
+              only:
+                - update_firefox_versions
+      - integration_nimbus_fenix_enrollment:
+          name: Test Firefox for Android (Fenix)
+          requires:
+            - Create Fenix and iOS recipes
+            - Build Fenix APKs
+          filters:
+            branches:
+              only:
+                - update_firefox_versions
+      - integration_nimbus_ios_enrollment:
+          name: Test Firefox for iOS Beta
+          requires:
+            - Create Fenix and iOS recipes
+          file_path: experimenter/tests/firefox_fennec_beta_build.env
+          ios_version: "18.2"
+          simulator_device: iPhone 16
+          filters:
+            branches:
+              only:
+                - update_firefox_versions
+      - integration_nimbus_ios_enrollment:
+          name: Test Firefox for iOS Release
+          requires:
+            - Create Fenix and iOS recipes
+          file_path: experimenter/tests/firefox_fennec_release_build.env
+          ios_version: "18.2"
+          simulator_device: iPhone 16
+          filters:
+            branches:
+              only:
+                - update_firefox_versions
+      - integration_nimbus_sdk_targeting:
+          name: Test SDK Targeting (Release Firefox)
+          filters:
+            branches:
+              ignore:
+                - main
+      - integration_nimbus_cirrus:
+          name: Test Demo app with Cirrus
+          filters:
+            branches:
+              ignore:
+                - main
+      - deploy_experimenter:
+          name: Deploy Experimenter
+          context:
+            - gcpv2-workload-identity
+          filters:
+            branches:
+              only: main
+          requires:
+            - Check Experimenter x86_64
+            - Check Experimenter aarch64
+      - deploy_cirrus:
+          name: Deploy Cirrus
+          filters:
+            branches:
+              only: main
+          requires:
+            - Check Cirrus x86_64
+            - Check Cirrus aarch64
+      - deploy_schemas:
+          name: Deploy Schemas
+          filters:
+            branches:
+              only: main

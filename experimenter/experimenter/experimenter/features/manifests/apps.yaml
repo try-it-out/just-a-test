@@ -1,0 +1,135 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+---
+fenix:
+  slug: "fenix"
+  repo:
+    type: "github"
+    name: "mozilla/gecko-dev"
+    default_branch: "master"
+  fml_path: "mobile/android/fenix/app/nimbus.fml.yaml"
+  release_discovery:
+    version_file:
+      type: "plaintext"
+      path: "browser/config/version.txt"
+    strategies:
+      - type: "branched"
+        branches:
+          - "master"
+          - "beta"
+          - "release"
+
+firefox_ios:
+  slug: "ios"
+  repo:
+    type: "github"
+    name: "mozilla-mobile/firefox-ios"
+  fml_path:
+    - "firefox-ios/nimbus.fml.yaml"
+    - "nimbus.fml.yaml"
+  release_discovery:
+    version_file:
+      - type: "plaintext"
+        path: "version.txt"
+      - type: "plist"
+        path: "firefox-ios/Client/Info.plist"
+        key: "CFBundleShortVersionString"
+      - type: "plist"
+        path: "Client/Info.plist"
+        key: "CFBundleShortVersionString"
+    strategies:
+      - type: "tagged"
+        branch_re: 'release/v(?P<major>\d+)(?:\.(?P<minor>\d+))?'
+        tag_re: 'firefox-v(?P<major>\d+)\.(?P<minor>\d+)'
+      - type: "branched"
+
+focus_android:
+  slug: "focus-android"
+  repo:
+    type: "github"
+    name: "mozilla-mobile/firefox-android"
+  fml_path: "focus-android/app/nimbus.fml.yaml"
+  release_discovery:
+    version_file:
+      type: "plaintext"
+      path: "version.txt"
+    strategies:
+      - type: "tagged"
+        branch_re: 'releases_v(?P<major>\d+)'
+        tag_re: 'focus-v(?P<major>\d+)\.(?P<minor>\d+)(?:\.(?P<patch>\d+))?'
+      - type: "branched"
+
+focus_ios:
+  slug: "focus-ios"
+  repo:
+    type: "github"
+    name: "mozilla-mobile/firefox-ios"
+  fml_path:
+    - "focus-ios/nimbus.fml.yaml"
+  release_discovery:
+    version_file:
+      - type: "plaintext"
+        path: "version.txt"
+      - type: "plist"
+        path: "focus-ios/Blockzilla/Info.plist"
+        key: "CFBundleShortVersionString"
+      - type: "plist"
+        path: "Blockzilla/Info.plist"
+        key: "CFBundleShortVersionString"
+    strategies:
+      - type: "tagged"
+        branch_re: 'release/v(?P<major>\d+)'
+        tag_re: 'focus/klar-v(?P<major>\d+)\.(?P<minor>\d+)'
+        minimum_version: "124.0.0"  # Pre v124 it used the focus-ios repo.
+      - type: "branched"
+
+monitor_cirrus:
+  slug: "monitor-web"
+  repo:
+    type: "github"
+    name: "mozilla/blurts-server"
+  fml_path: "config/nimbus.yaml"
+
+mozillavpn_backend_cirrus:
+  slug: "vpn-web"
+  repo:
+    type: "github"
+    name: "mozilla-services/guardian-website"
+  fml_path: "nimbus.yaml"
+
+firefox_accounts_cirrus:
+  slug: "fxa-web"
+  repo:
+    type: "github"
+    name: "mozilla/fxa"
+  fml_path: "configs/nimbus.yaml"
+
+firefox_desktop:
+  slug: "firefox-desktop"
+  repo:
+    type: "hgmo"
+    name: "mozilla-unified"
+    default_branch: "central"
+  experimenter_yaml_path: "toolkit/components/nimbus/FeatureManifest.yaml"
+  release_discovery:
+    version_file:
+      type: "plaintext"
+      path: "browser/config/version.txt"
+    strategies:
+      - type: "branched"
+        branches:
+          # The order here is important!
+          #
+          # When central is merging to beta or beta is merging to release, then
+          # both of those will have the same version number for a period of
+          # time.
+          #
+          # In this order, if two consecutive branches have the same version,
+          # then the latter will take precedence. e.g., if both beta and release
+          # report the same version, we will use the feature manifest from release.
+          - "central"
+          - "beta"
+          - "release"
+          - "esr115"
+          - "esr128"

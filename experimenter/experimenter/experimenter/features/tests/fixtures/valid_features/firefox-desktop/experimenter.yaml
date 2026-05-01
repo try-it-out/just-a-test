@@ -1,0 +1,69 @@
+someFeature:
+  owner: owner@example.com
+  description: Some Firefox Feature
+  hasExposure: true
+  exposureDescription: An exposure event
+  isEarlyStartup: true
+  variables:
+    stringEnumProperty:
+      type: string
+      fallbackPref: browser.somePref
+      description: String Property
+      enum:
+        - v1
+        - v2
+    boolProperty:
+      type: boolean
+      description: Boolean Property
+    intProperty:
+      type: int
+      description: Integer Property
+      enum:
+        - 1
+        - 2
+        - 3
+    jsonProperty:
+      type: json
+      description: Arbitrary JSON Property
+missingVariables:
+  owner: owner@example.com
+  description: Some Firefox Feature
+  hasExposure: true
+  exposureDescription: An exposure event
+  isEarlyStartup: true
+  variables: {}
+oldSetPrefFeature:
+  owner: owner@example.com
+  description: A feature that sets prefs via the old setPref schema
+  hasExposure: true
+  exposureDescription: An exposure event
+  variables:
+    string:
+      type: string
+      setPref: nimbus.test.string
+      description: String property
+    int:
+      type: int
+      setPref: nimbus.test.int
+      description: Integer property
+    boolean:
+      type: boolean
+      setPref: nimbus.test.boolean
+      description: Boolean property
+setPrefFeature:
+  owner: owner@example.com
+  description: A feature that sets prefs
+  hasExposure: false
+  variables:
+    user:
+      type: string
+      description: string property on user branch
+      setPref:
+        branch: user
+        pref: nimbus.user
+    default:
+      type: string
+      description: string property on default branch
+      setPref:
+        branch: default
+        pref: nimbus.default

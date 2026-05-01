@@ -1,0 +1,24 @@
+import logging
+import random
+
+from django.core.management.base import BaseCommand
+
+from experimenter.experiments.tests.factories import NimbusExperimentFactory
+from experimenter.legacy.legacy_experiments.models import Experiment
+from experimenter.legacy.legacy_experiments.tests.factories import ExperimentFactory
+
+logger = logging.getLogger()
+
+
+class Command(BaseCommand):
+    help = "Generates dummy experiment data"
+
+    def handle(self, *args, **options):
+        for status, _ in Experiment.STATUS_CHOICES:
+            random_type = random.choice(Experiment.TYPE_CHOICES)[0]
+            experiment = ExperimentFactory.create_with_status(status, type=random_type)
+            logger.info(f"Created {experiment}: {status}")
+
+        for lifecycle in NimbusExperimentFactory.LocalLifecycles:
+            experiment = NimbusExperimentFactory.create_with_lifecycle(lifecycle)
+            logger.info(f"Created {experiment}: {lifecycle}")

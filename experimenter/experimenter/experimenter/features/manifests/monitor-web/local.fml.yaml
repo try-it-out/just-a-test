@@ -1,0 +1,100 @@
+---
+version: 1.0.0
+about:
+  description: Nimbus Feature Manifest for Monitor Web testing
+channels:
+  - local
+features:
+  data-broker-removal-time-estimates:
+    description: Show the data broker removal time estimates
+    variables:
+      enabled:
+        description: If the feature is enabled
+        type: Boolean
+        default: true
+  data-privacy-petition-banner:
+    description: Show the data privacy petition banner to US users
+    variables:
+      enabled:
+        description: If the feature is enabled
+        type: Boolean
+        default: true
+  example-feature:
+    description: An example feature
+    variables:
+      enabled:
+        description: If the feature is enabled
+        type: Boolean
+        default: true
+      something:
+        description: Another variable
+        type: Option<String>
+        default: ~
+  landing-page-free-scan-cta:
+    description: Landing page free scan CTA
+    variables:
+      enabled:
+        description: If the feature is enabled
+        type: Boolean
+        default: false
+      variant:
+        description: The CTA variant to show
+        type: FreeScanCtaType
+        default: ctaWithEmail
+  landing-page-redesign-plus-eligible-experiment:
+    description: Landing page redesign
+    variables:
+      enabled:
+        description: If the feature is enabled
+        type: Boolean
+        default: true
+      variant:
+        description: The landing page variant to show
+        type: LandingPageVariant
+        default: redesign
+  last-scan-date:
+    description: "Show the date of the user's last scan in the top right-hand corner"
+    variables:
+      enabled:
+        description: If the feature is enabled
+        type: Boolean
+        default: true
+  welcome-scan-optional-info:
+    description: Show additional optional input fields for the data broker scan
+    variables:
+      enabled:
+        description: If the feature is enabled
+        type: Boolean
+        default: true
+      variant:
+        description: The optional fields to show
+        type: OptionalBrokerScanInfoFields
+        default: middleName
+enums:
+  FreeScanCtaType:
+    description: An enum of free scan CTA types
+    variants:
+      ctaOnly:
+        description: Only show a CTA button with the label “Get free scan”
+      ctaOnlyAlternativeLabel:
+        description: Only show a CTA button with the label “Sign up to get free scan”
+      ctaWithEmail:
+        description: Show a CTA button with an optional email input
+  LandingPageVariant:
+    description: An enum of landing page variants
+    variants:
+      default:
+        description: Show the default landing page
+      redesign:
+        description: Show the redesigned landing page
+  OptionalBrokerScanInfoFields:
+    description: An enum of optional broker scan info fields
+    variants:
+      middleName:
+        description: Only show the optional middle name field
+      none:
+        description: Do not show any optional fields
+      suffix:
+        description: Only show the optional suffix field
+      suffixAndMiddleName:
+        description: Show the optional suffix and middle name fields

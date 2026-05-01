@@ -1,0 +1,42 @@
+{% extends "experiments/section_base.html" %}
+{% load md2 %}
+{% block section_title %}
+Overview
+{% endblock %}
+
+{% block section_content %}
+  <p><strong>Public Description</strong> </p>
+  {{ experiment.public_description|urlize|linebreaks }}
+
+  <p><strong>Internal Description</strong></p>
+  {{ experiment.short_description|urlize|markdown }}
+
+  <p><strong>Delivery Owner</strong></p>
+  <p>{{ experiment.owner }}</p>
+
+  {% if experiment.analysis_owner %}
+    <p><strong>Data Science Owner</strong></p>
+    <p>{{ experiment.analysis_owner }}</p>
+  {% endif %}
+
+  {% if experiment.engineering_owner %}
+    <p><strong>Engineering Owner</strong></p>
+    <p>{{ experiment.engineering_owner }}</p>
+  {% endif %}
+
+  {% if experiment.related_to.all %}
+    <p><strong>Related Experiments</strong></p>
+      {% for experiment in experiment.related_to.all %}
+        <p><a href="{{ experiment.get_absolute_url }}">{{ experiment }}</a></p>
+      {% endfor %}
+  {% endif %}
+
+  {% if experiment.projects.all %}
+    <p><strong> Projects</strong></p>
+    <p>
+      {% for project in experiment.projects.all %}
+        {{project}}{% if not forloop.last %},{% endif %}
+      {% endfor %}
+    </p>
+  {% endif %}
+{% endblock %}

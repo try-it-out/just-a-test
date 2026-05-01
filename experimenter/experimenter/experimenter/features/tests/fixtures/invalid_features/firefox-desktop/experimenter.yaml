@@ -1,0 +1,8 @@
+readerMode:
+  owner: owner@example.com
+  description: Firefox Reader Mode
+  hasExposure: false
+  isEarlyStartup: true
+  variables:
+    - fallbackPref: reader.pocket.ctaVersion
+      description: What version of Pocket CTA to show in Reader Mode (Empty string is no CTA)

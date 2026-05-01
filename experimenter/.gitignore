@@ -1,0 +1,130 @@
+.bash_history
+.DS_store
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+.python-version
+
+# PyInstaller
+#  Usually these files are written by a python script from a template
+#  before PyInstaller builds the exe, so as to inject date/other infos into it.
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+coverage/
+*,cover
+.hypothesis/
+
+# Translations
+*.mo
+*.pot
+
+# Logging
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+target/
+
+#Ipython Notebook
+.ipynb_checkpoints
+.ipython
+
+# Environment file
+.env
+.envrc
+.psql_history
+
+# VS Code
+**/.vscode/*
+
+# IntelliJ
+**/.idea/*
+
+# Hosted assets
+experimenter/experimenter/static/scripts/
+experimenter/experimenter/served/
+experimenter/experimenter/legacy/legacy-ui/assets/
+experimenter/experimenter/reporting/reporting-ui/assets/
+
+# Key files
+*.pem
+
+# test files
+.pytest_cache
+.testmondata
+.tmontmp
+experimenter/coverage_html_report/
+experimenter/tests/integration/test-reports/
+junit.xml
+**/coverage_report/
+
+# Dependencies
+node_modules
+
+google-credentials.json
+
+# Jetstream config
+experimenter/experimenter/outcomes/metric-hub-main/*
+!experimenter/experimenter/outcomes/metric-hub-main/jetstream/
+experimenter/experimenter/outcomes/metric-hub-main/jetstream/*
+!experimenter/experimenter/outcomes/metric-hub-main/jetstream/outcomes/
+experimenter/experimenter/outcomes/metric-hub.zip
+experimenter/experimenter/segments/metric-hub-main/*
+!experimenter/experimenter/segments/metric-hub-main/definitions/
+!experimenter/experimenter/segments/metric-hub-main/jetstream/
+experimenter/experimenter/segments/metric-hub-main/jetstream/*
+!experimenter/experimenter/segments/metric-hub-main/jetstream/definitions/
+experimenter/experimenter/segments/metric-hub.zip
+
+# Versioning assets generated on build
+**/commit-description.txt
+**/commit-summary.txt
+**/version.json
+
+# Cirrus
+cirrus/server/app/__pycache__
+
+# Application Services for processing FML files
+experimenter/experimenter/features/manifests/application-services/
+
+# Schemas
+schemas/mozilla_nimbus_schemas/schemas/

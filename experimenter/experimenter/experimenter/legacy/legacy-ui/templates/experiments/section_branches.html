@@ -1,0 +1,87 @@
+{% extends "experiments/section_base.html" %}
+
+{% load experiment_extras %}
+
+{% block section_title %}
+  Branches ({{experiment.variants.count}})
+{% endblock %}
+
+{% block section_content %}
+  {% if experiment.is_message_experiment %}
+    {% if experiment.message_type %}
+      <strong>Message Type</strong> <p>{{ experiment.get_message_type_display }}</p>
+    {% endif %}
+    {% if experiment.message_template %}
+      <strong>Message Template</strong> <p>{{ experiment.message_template }}</p>
+    {% endif %}
+  {% endif %}
+  {% for variant in experiment.variants.all %}
+    <div class="pl-3 my-3 {% if not experiment.is_pref_experiment %} border-left-grey {% endif %}">
+      <h5>{{ variant.ratio }}% {{ variant.name }}</h5>
+      {% if experiment.is_pref_experiment %}
+        <p><strong>Prefs:</strong></p>
+        <table class="table table-bordered pref-table">
+        <thead>
+          <tr>
+            <th scope="col">Name</th>
+            <th scope="col">Value</th>
+            <th scope="col">Type</th>
+            <th scope="col">Branch</th>
+          </tr>
+        </thead>
+        <tbody>
+      {% endif %}
+      {% if experiment.is_multi_pref %}
+        {% for preference in variant.preferences.all %}
+          <tr>
+            <td>{{ preference.pref_name }}</td>
+            <td>
+            {% if preference.is_json_string_type %}
+              <pre class="text-info">{{ preference.pref_value|as_json }}</pre>  
+            {% else %}
+              <pre class="text-info pref-value-cell">{{ preference.pref_value }}</pre>
+            {% endif %}
+          </td>
+            <td>{{ preference.pref_type }}</td>
+            <td>{{ preference.pref_branch }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+        </table>
+      {% elif experiment.is_pref_experiment %}
+          <tr>
+            <td>{{ experiment.pref_name}}</td>
+            <td>
+              
+              {% if experiment.is_pref_value_json_string %}
+              <pre class="text-info">{{ variant.value|as_json }}</pre>
+              {% else %}
+              <pre class="text-info pref-value-cell">{{ variant.value }}</pre>
+              {% endif %}
+            </td>
+            <td>{{ experiment.pref_type }}</td>
+            <td>{{ experiment.pref_branch }}</td>
+          </tr>
+        </tbody>
+        </table>
+      {% endif %}
+      <p>{{ variant.description|urlize|linebreaks }}</p>
+      {% if experiment.is_branched_addon %}
+        <p><strong>Addon Release URL: </strong></p>
+        <p>{{ variant.addon_release_url|urlize }}</p>
+      {% endif %}
+      {% if experiment.is_message_experiment %}
+        {% if variant.message_targeting %}
+          <strong>Message Targeting</strong> {{ variant.message_targeting|linebreaks }}
+        {% endif %}
+        {% if variant.message_threshold %}
+          <strong>Message Threshold</strong> {{ variant.message_threshold|linebreaks }}
+        {% endif %}
+        {% if variant.message_triggers %}
+          <strong>Message Triggers</strong> {{ variant.message_triggers|linebreaks }}
+        {% endif %}
+        <strong>Message Content</strong> {{ variant.value|linebreaks }}
+      {% endif%}
+    </div>
+  {% endfor %}
+{% endblock %}

@@ -1,0 +1,62 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/experimenter"
+    schedule:
+      interval: weekly
+    target-branch: main
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          ["version-update:semver-major", "version-update:semver-patch"]
+      - dependency-name: "vega"
+        update-types:
+          ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
+  - package-ecosystem: pip
+    directory: "/experimenter"
+    schedule:
+      interval: weekly
+    target-branch: main
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          ["version-update:semver-major", "version-update:semver-patch"]
+  - package-ecosystem: pip
+    directory: "/experimenter/tests"
+    schedule:
+      interval: weekly
+    target-branch: main
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          ["version-update:semver-major", "version-update:semver-patch"]
+  - package-ecosystem: pip
+    directory: "/cirrus/server"
+    schedule:
+      interval: weekly
+    target-branch: main
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          ["version-update:semver-major", "version-update:semver-patch"]
+  - package-ecosystem: pip
+    directory: "/schemas"
+    schedule:
+      interval: weekly
+    target-branch: main
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          ["version-update:semver-major", "version-update:semver-patch"]
+  - package-ecosystem: npm
+    directory: "/schemas"
+    schedule:
+      interval: weekly
+    target-branch: main
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          ["version-update:semver-major", "version-update:semver-patch"]
+      - dependency-name: "vega"
+        update-types:
+          ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
